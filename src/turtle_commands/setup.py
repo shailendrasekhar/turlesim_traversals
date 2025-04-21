@@ -21,6 +21,8 @@ setup(
     entry_points={
         'console_scripts': [
             'char_trajectory_node = scripts.char_trajectory_node:main',
+            'string_trajectory_node = scripts.string_trajectory_node:main',
+            'multi_turtle_char_trajectory = scripts.multi_turtle_char_trajectory:main',
         ],
     },
 )

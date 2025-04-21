@@ -3,3 +3,6 @@ Navigational Experiments with Turtlesim
   - Turtlesim
 
 CharacterTrajectory
+Multi-Turtle CharacterTrajectory
+
+String Trajectory
