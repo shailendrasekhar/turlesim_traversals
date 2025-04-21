@@ -9,6 +9,15 @@ from matplotlib.textpath import TextPath
 from matplotlib.font_manager import FontProperties
 from matplotlib.path import Path
 
+
+def evaluate_quadratic_bezier(p0, p1, p2, t):
+    return (1 - t)**2 * p0 + 2 * (1 - t) * t * p1 + t**2 * p2
+
+
+def evaluate_cubic_bezier(p0, p1, p2, p3, t):
+    return (1 - t)**3 * p0 + 3 * (1 - t)**2 * t * p1 + 3 * (1 - t) * t**2 * p2 + t**3 * p3
+
+
 class CharTrajectoryNode(Node):
     def __init__(self):
         super().__init__('char_trajectory_node')
@@ -20,7 +29,7 @@ class CharTrajectoryNode(Node):
         self.waypoints = []  # (x, y, pen_down)
         self.current_goal_index = 0
         self.pen_down = True
-        self.timer = self.create_timer(0.05, self.move_turtle)  # Faster timer
+        self.timer = self.create_timer(0.05, self.move_turtle)
 
         char = input("Enter a character: ").upper()
         self.waypoints = self.get_waypoints_from_char(char, scale=5.5, offset=(3.0, 3.0), resolution=0.7)
@@ -30,7 +39,7 @@ class CharTrajectoryNode(Node):
     def pose_callback(self, msg):
         self.pose = msg
 
-    def get_waypoints_from_char(self, char, scale=5.5, offset=(3.0, 3.0), resolution=1.0):
+    def get_waypoints_from_char(self, char, scale=5.5, offset=(3.0, 3.0), resolution=0.7):
         try:
             font = FontProperties(family="DejaVu Sans", weight="bold")
             text_path = TextPath((0, 0), char, size=1.0, prop=font)
@@ -45,18 +54,48 @@ class CharTrajectoryNode(Node):
             verts += offset
 
             waypoints = []
+            i = 0
             last_point = None
 
-            for v, c in zip(verts, codes):
-                if c == Path.MOVETO:
-                    last_point = v
-                    waypoints.append((v[0], v[1], False))  # pen up
-                elif c == Path.LINETO:
-                    if last_point is None or np.linalg.norm(v - last_point) > resolution:
-                        waypoints.append((v[0], v[1], True))  # pen down
-                        last_point = v
+            while i < len(codes):
+                code = codes[i]
+                if code == Path.MOVETO:
+                    last_point = verts[i]
+                    waypoints.append((last_point[0], last_point[1], False))  # pen up
+                    i += 1
+                elif code == Path.LINETO:
+                    pt = verts[i]
+                    if last_point is not None and np.linalg.norm(pt - last_point) > resolution:
+                        waypoints.append((pt[0], pt[1], True))
+                    last_point = pt
+                    i += 1
+                elif code == Path.CURVE3:
+                    p0 = last_point
+                    p1 = verts[i]
+                    p2 = verts[i+1]
+                    for t in np.linspace(0, 1, num=20):
+                        p = evaluate_quadratic_bezier(p0, p1, p2, t)
+                        waypoints.append((p[0], p[1], True))
+                    last_point = p2
+                    i += 2
+                elif code == Path.CURVE4:
+                    p0 = last_point
+                    p1 = verts[i]
+                    p2 = verts[i+1]
+                    p3 = verts[i+2]
+                    for t in np.linspace(0, 1, num=20):
+                        p = evaluate_cubic_bezier(p0, p1, p2, p3, t)
+                        waypoints.append((p[0], p[1], True))
+                    last_point = p3
+                    i += 3
+                elif code == Path.CLOSEPOLY:
+                    i += 1  # skip
+                else:
+                    self.get_logger().warn(f"Unhandled Path code: {code}")
+                    i += 1
 
             return waypoints
+
         except Exception as e:
             self.get_logger().error(f"Error generating waypoints: {str(e)}")
             return []
@@ -66,8 +105,8 @@ class CharTrajectoryNode(Node):
             return
 
         req = SetPen.Request()
-        req.r = 0
-        req.g = 0
+        req.r = 255
+        req.g = 255
         req.b = 255
         req.width = 2
         req.off = off
@@ -90,7 +129,7 @@ class CharTrajectoryNode(Node):
         if distance < 0.15:
             self.current_goal_index += 1
             if self.current_goal_index >= len(self.waypoints):
-                self.get_logger().info("Finished tracing character.")
+                self.get_logger().info("✅ Finished tracing character.")
                 self.timer.cancel()
                 self.publisher.publish(Twist())
             return
@@ -99,12 +138,14 @@ class CharTrajectoryNode(Node):
         angle_diff = (angle_to_goal - self.pose.theta + math.pi) % (2 * math.pi) - math.pi
 
         vel = Twist()
-        vel.angular.z = max(min(8.0 * angle_diff, 3.0), -3.0)  # Faster turning
+        vel.angular.z = max(min(6.0 * angle_diff, 2.0), -2.0)
 
         if abs(angle_diff) > 0.6:
-            vel.linear.x = 0.2  # Keep moving even while turning
+            vel.linear.x = 0.1  # very slow when turning
+        elif abs(angle_diff) > 0.3:
+            vel.linear.x = 0.3
         else:
-            vel.linear.x = min(2.0, 2.5 * distance)  # Faster forward
+            vel.linear.x = min(1.8, 2.5 * distance)  # faster when aligned
 
         self.publisher.publish(vel)
 
