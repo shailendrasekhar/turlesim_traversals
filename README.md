@@ -9,10 +9,10 @@ This ROS 2 package uses `turtlesim` to have multiple turtles collaboratively dra
 
 ## Installation & Build
 
-1. Clone this repository into your ROS 2 workspace's `src/` folder:
+1. Clone this repository into your ROS 2 workspace:
 
     ```bash
-    cd ~/ros2_ws/src
+    cd ~/ros2_ws/
     git clone <your-repo-url>
     ```
 
